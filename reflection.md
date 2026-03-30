@@ -140,3 +140,9 @@ One AI suggestion I rejected or modified was the idea of making several methods 
 Using separate chat sessions for different phases helped me stay organized because each phase had a clear goal: design, implementation, UI integration, algorithms, testing, and reflection. That prevented the conversation from becoming mixed and harder to manage.
 
 The biggest lesson about being the lead architect was that I had to make the final design decisions myself. AI could generate options quickly, but I had to decide what matched the project goals, what stayed readable, and what was actually verified by code and tests.
+
+
+## Optional Extensions
+
+**a. Challenge 1: Advanced Algorithmic Capability via Agent Mode**
+**b. Challenge 2: Data Persistence with Agent Mode**
