@@ -1,5 +1,12 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
+
+
+class TaskStatus(Enum):
+    PENDING = "pending"
+    COMPLETE = "complete"
+    SKIPPED = "skipped"
 
 
 @dataclass
@@ -9,13 +16,13 @@ class Task:
     duration: int
     priority: int
     recurring: bool
-    status: str
+    status: TaskStatus = TaskStatus.PENDING
     due_time: Optional[str] = None
 
     def mark_complete(self) -> None:
         pass
 
-    def update_task(self) -> None:
+    def update_task(self, **kwargs) -> None:
         pass
 
     def is_conflicting(self, other: "Task") -> bool:
@@ -53,14 +60,13 @@ class Owner:
     def update_preferences(self, preferences: dict) -> None:
         pass
 
-    def view_tasks(self) -> None:
+    def view_tasks(self) -> list[Task]:
         pass
 
 
 class Scheduler:
-    def __init__(self, available_time: int):
-        self.tasks: list[Task] = []
-        self.available_time: int = available_time
+    def __init__(self, owner: Owner):
+        self.owner: Owner = owner
         self.planned_tasks: list[Task] = []
 
     def sort_tasks(self) -> list[Task]:

@@ -2,16 +2,36 @@
 
 ## 1. System Design
 
+PawPal+ is designed to help a pet owner organize and plan daily pet care activities.
+
+Three core actions the user should be able to perform are:
+
+    1-1. The user should be able to enter and manage basic owner and pet information so the system can support personalized care planning.
+
+    1-2. The user should be able to add, edit, and organize pet care tasks such as feeding, walks, medication, grooming, and enrichment, including important details like duration and priority.
+
+    1-3. The user should be able to generate and review a daily care plan based on task importance, available time, and owner preferences, while also seeing why the plan was selected.
+
+
 **a. Initial design**
 
 - Briefly describe your initial UML design.
+My initial UML design for PawPal+ was kept simple and focused on the main parts of the app. I included four classes: Owner, Pet, Task, and Scheduler. The relationships were straightforward: an Owner can have multiple Pets, each Pet can have multiple Tasks, and the Scheduler works with tasks to build a daily plan.
+
 - What classes did you include, and what responsibilities did you assign to each?
+The Owner class was responsible for storing user information such as name, available time, preferences, and the pets they manage. The Pet class represented each pet and held basic details like name, species, age, notes, and its task list. The Task class represented individual care activities such as feeding, walks, medication, or grooming, along with details like duration, priority, due time, recurring status, and completion status. The Scheduler class was responsible for organizing tasks, checking conflicts, and generating a daily schedule based on time and priority.
 
 **b. Design changes**
 
 - Did your design change during implementation?
+
+Yes, the design changed slightly after reviewing the class skeleton.
+
 - If yes, describe at least one change and why you made it.
 
+The main change was in the Scheduler class. In the initial design, Scheduler stored its own available_time and task list. After review, I changed it so that Scheduler works directly with the Owner object instead. This avoids duplicated data and makes it easier for the scheduler to access pets and their tasks when building a daily plan.
+
+I also updated Task.update_task() so it can accept changes more flexibly, and I replaced the raw task status string with a small enum to keep task states more consistent.
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
