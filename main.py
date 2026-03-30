@@ -111,6 +111,17 @@ def main():
     print(f"\n{'=' * 40}")
     print(scheduler.explain_plan())
 
+    # --- Next available slot ---
+    print(f"\n{'=' * 40}")
+    print("Next Available Slot Demo")
+    print("=" * 40)
+    for test_duration in [10, 30, 60]:
+        slot = scheduler.find_next_available_slot(test_duration)
+        if slot:
+            print(f"  Next free slot for a {test_duration}-min task: {slot}")
+        else:
+            print(f"  No available slot found for a {test_duration}-min task (07:00-21:00)")
+
 
 if __name__ == "__main__":
     main()
