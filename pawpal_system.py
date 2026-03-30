@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from enum import Enum
+from itertools import combinations
 from typing import Optional
 
 
@@ -17,7 +19,9 @@ class Task:
     priority: int
     recurring: bool
     status: TaskStatus = TaskStatus.PENDING
-    due_time: Optional[str] = None
+    due_time: Optional[str] = None    # "HH:MM" — time of day
+    frequency: Optional[str] = None   # "daily", "weekly", or None
+    due_date: Optional[str] = None    # "YYYY-MM-DD" — used to compute next occurrence
 
     def mark_complete(self) -> None:
         """Set the task status to COMPLETE."""
@@ -30,10 +34,27 @@ class Task:
                 setattr(self, key, value)
 
     def is_conflicting(self, other: "Task") -> bool:
-        """Return True if this task shares the same due_time as another task."""
+        """Return True if this task's time window overlaps with another task on the same date."""
         if self.due_time is None or other.due_time is None:
             return False
-        return self.due_time == other.due_time
+
+        # --- Date guard ---
+        # Works for all three cases:
+        #   None != None      → False → fall through to time check (both undated)
+        #   "2026-03-29" != "2026-03-29" → False → fall through (same day)
+        #   anything else     → True  → no conflict (different days, or only one has a date)
+        if self.due_date != other.due_date:
+            return False
+
+        # --- Time-window overlap ---
+        def to_minutes(t: str) -> int:
+            h, m = t.split(":")
+            return int(h) * 60 + int(m)
+
+        start_a, start_b = to_minutes(self.due_time), to_minutes(other.due_time)
+        end_a,   end_b   = start_a + self.duration,   start_b + other.duration
+
+        return start_a < end_b and start_b < end_a
 
 
 @dataclass
@@ -52,9 +73,17 @@ class Pet:
         """Remove a task from this pet's task list."""
         self.tasks.remove(task)
 
-    def get_tasks(self) -> list[Task]:
-        """Return a copy of this pet's task list."""
-        return list(self.tasks)
+    def get_tasks(self, status: TaskStatus = None) -> list[Task]:
+        """Return this pet's tasks, optionally filtered by status.
+
+        Examples:
+            pet.get_tasks()                      # all tasks
+            pet.get_tasks(TaskStatus.PENDING)    # only pending
+            pet.get_tasks(TaskStatus.COMPLETE)   # only completed
+        """
+        if status is None:
+            return list(self.tasks)
+        return [t for t in self.tasks if t.status == status]
 
 
 class Owner:
@@ -73,11 +102,23 @@ class Owner:
         """Merge new key-value pairs into the owner's preferences."""
         self.preferences.update(preferences)
 
-    def view_tasks(self) -> list[Task]:
-        """Return all tasks across every pet owned by this owner."""
+    def view_tasks(self, pet_name: str = None, status: TaskStatus = None) -> list[Task]:
+        """Return tasks across all pets, with optional filters.
+
+        Args:
+            pet_name: If given, only include tasks belonging to that pet.
+            status:   If given, only include tasks with that TaskStatus.
+
+        Examples:
+            owner.view_tasks()                                    # all tasks
+            owner.view_tasks(pet_name="Buddy")                    # Buddy's tasks only
+            owner.view_tasks(status=TaskStatus.PENDING)           # pending across all pets
+            owner.view_tasks(pet_name="Luna", status=TaskStatus.COMPLETE)  # Luna's completed
+        """
         all_tasks = []
         for pet in self.pets:
-            all_tasks.extend(pet.get_tasks())
+            if pet_name is None or pet.name == pet_name:
+                all_tasks.extend(pet.get_tasks(status=status))
         return all_tasks
 
 
@@ -95,15 +136,32 @@ class Scheduler:
             key=lambda t: (-t.priority, t.due_time or "")
         )
 
+    def sort_by_time(self) -> list[Task]:
+        """Return all tasks sorted by due_time (HH:MM); tasks with no time go last."""
+        tasks = self.owner.view_tasks()
+        return sorted(
+            tasks,
+            key=lambda t: t.due_time or "99:99"
+        )
+
     def detect_conflicts(self) -> list[tuple[Task, Task]]:
-        """Return all pairs of tasks that share the same due_time."""
-        tasks = self.sort_tasks()
-        conflicts = []
-        for i in range(len(tasks)):
-            for j in range(i + 1, len(tasks)):
-                if tasks[i].is_conflicting(tasks[j]):
-                    conflicts.append((tasks[i], tasks[j]))
-        return conflicts
+        """Return all pairs of tasks whose time windows overlap."""
+        tasks = self.owner.view_tasks()
+        return [
+            (a, b)
+            for a, b in combinations(tasks, 2)
+            if a.is_conflicting(b)
+        ]
+
+    def warn_conflicts(self) -> list[str]:
+        """Return a warning message for each conflicting task pair; returns [] if no conflicts."""
+        warnings = []
+        for a, b in self.detect_conflicts():
+            warnings.append(
+                f"WARNING: '{a.title}' starts at {a.due_time} and runs {a.duration} min — "
+                f"overlaps with '{b.title}' starting at {b.due_time} ({b.duration} min)"
+            )
+        return warnings
 
     def generate_daily_plan(self) -> list[Task]:
         """Build a daily plan of pending tasks that fit within the owner's available time."""
@@ -119,6 +177,32 @@ class Scheduler:
                 time_remaining -= task.duration
 
         return self.planned_tasks
+
+    def mark_task_complete(self, task: Task, pet: Pet) -> Optional[Task]:
+        """Mark a task complete and add the next occurrence to the pet if it is recurring."""
+        task.mark_complete()
+
+        if task.frequency not in ("daily", "weekly"):
+            return None
+
+        # Use the task's own due_date as the base; fall back to today
+        base = date.fromisoformat(task.due_date) if task.due_date else date.today()
+
+        delta = timedelta(days=1) if task.frequency == "daily" else timedelta(weeks=1)
+        next_date = base + delta
+
+        next_task = Task(
+            title=task.title,
+            task_type=task.task_type,
+            duration=task.duration,
+            priority=task.priority,
+            recurring=task.recurring,
+            due_time=task.due_time,
+            frequency=task.frequency,
+            due_date=next_date.isoformat(),   # e.g. "2026-03-30"
+        )
+        pet.add_task(next_task)
+        return next_task
 
     def explain_plan(self) -> str:
         """Return a formatted string summarizing the daily plan and any conflicts."""
