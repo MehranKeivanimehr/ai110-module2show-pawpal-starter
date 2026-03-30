@@ -170,7 +170,7 @@ class Scheduler:
         self.planned_tasks = []
 
         for task in sorted_tasks:
-            if task.status == TaskStatus.COMPLETE:
+            if task.status != TaskStatus.PENDING:
                 continue
             if task.duration <= time_remaining:
                 self.planned_tasks.append(task)

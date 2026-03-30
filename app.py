@@ -87,20 +87,76 @@ else:
         st.session_state.active_pet.add_task(new_task)   # <-- Pet.add_task()
         st.success(f"Task '{task_title}' added to {st.session_state.active_pet.name}.")
 
-    # Show current tasks for active pet
+    # Show current tasks for active pet — sorted by priority then due time
     current_tasks = st.session_state.active_pet.get_tasks()   # <-- Pet.get_tasks()
     if current_tasks:
-        st.markdown("**Current tasks:**")
+        st.markdown("**Current tasks (sorted by priority):**")
+        # Use a temporary single-pet scheduler just to reuse sort_tasks logic
+        from pawpal_system import Owner as _Owner
+        _tmp_owner = _Owner(name="tmp", available_time=999)
+        _tmp_owner.add_pet(st.session_state.active_pet)
+        sorted_tasks = Scheduler(_tmp_owner).sort_tasks()
         st.table([
             {
+                "Priority": t.priority,
                 "Title": t.title,
                 "Type": t.task_type,
                 "Duration (min)": t.duration,
-                "Priority": t.priority,
                 "Due": t.due_time or "—",
                 "Status": t.status.value,
             }
-            for t in current_tasks
+            for t in sorted_tasks
+        ])
+
+st.divider()
+
+# --- Section 3.5: View & Filter All Tasks ---
+st.subheader("View & Filter Tasks")
+
+_owner = st.session_state.owner
+if not _owner.view_tasks():
+    st.info("No tasks yet. Add pets and tasks above.")
+else:
+    fcol1, fcol2, fcol3 = st.columns(3)
+    with fcol1:
+        pet_options = ["All Pets"] + [p.name for p in _owner.pets]
+        filter_pet = st.selectbox("Filter by pet", pet_options, key="filter_pet")
+    with fcol2:
+        status_labels = {"All statuses": None, "Pending": TaskStatus.PENDING,
+                         "Complete": TaskStatus.COMPLETE, "Skipped": TaskStatus.SKIPPED}
+        filter_status_label = st.selectbox("Filter by status", list(status_labels.keys()), key="filter_status")
+        filter_status = status_labels[filter_status_label]
+    with fcol3:
+        sort_by = st.radio("Sort by", ["Priority", "Time"], horizontal=True, key="sort_by")
+
+    pet_name_arg = None if filter_pet == "All Pets" else filter_pet
+    filtered_tasks = _owner.view_tasks(pet_name=pet_name_arg, status=filter_status)
+
+    if not filtered_tasks:
+        st.info("No tasks match the selected filters.")
+    else:
+        # Use Scheduler methods for sorting (Goals 1 & 2)
+        _filter_sched = Scheduler(_owner)
+        all_sorted = (_filter_sched.sort_by_time() if sort_by == "Time"
+                      else _filter_sched.sort_tasks())
+        filtered_ids = {id(t) for t in filtered_tasks}
+        sorted_filtered = [t for t in all_sorted if id(t) in filtered_ids]
+
+        # Map each task back to its pet name for the table
+        task_to_pet = {id(t): p.name for p in _owner.pets for t in p.tasks}
+
+        st.caption(f"{len(sorted_filtered)} task(s) shown")
+        st.table([
+            {
+                "Pet": task_to_pet.get(id(t), "—"),
+                "Priority": t.priority,
+                "Title": t.title,
+                "Type": t.task_type,
+                "Duration (min)": t.duration,
+                "Due": t.due_time or "—",
+                "Status": t.status.value,
+            }
+            for t in sorted_filtered
         ])
 
 st.divider()
@@ -117,7 +173,46 @@ if st.button("Generate Schedule"):
     elif not owner.view_tasks():
         st.warning("No tasks found across your pets.")
     else:
-        scheduler = Scheduler(owner)                         # <-- Scheduler(owner)
-        scheduler.generate_daily_plan()                      # <-- generate_daily_plan()
-        explanation = scheduler.explain_plan()               # <-- explain_plan()
-        st.text(explanation)
+        scheduler = Scheduler(owner)
+        planned = scheduler.generate_daily_plan()
+        conflicts = scheduler.warn_conflicts()
+
+        # --- Conflict warnings (most urgent — show first) ---
+        if conflicts:
+            st.error("⚠️ Schedule Conflicts Detected", icon="🚨")
+            for msg in conflicts:
+                # Parse the warning string into a friendlier message
+                # msg format: "WARNING: 'A' starts at HH:MM and runs N min — overlaps with 'B'..."
+                friendly = msg.replace("WARNING: ", "")
+                st.warning(friendly)
+            st.caption(
+                "Tip: adjust the due times or durations above so tasks don't overlap."
+            )
+
+        # --- Metrics row ---
+        total_time = sum(t.duration for t in planned)
+        remaining = owner.available_time - total_time
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Tasks Scheduled", len(planned))
+        col2.metric("Time Needed (min)", total_time)
+        col3.metric("Time Remaining (min)", remaining)
+
+        # --- Planned task table ---
+        if planned:
+            st.success(f"Here is {owner.name}'s daily plan!")
+            # Use Scheduler.sort_by_time() to order the plan chronologically (Goal 2)
+            planned_ids = {id(t) for t in planned}
+            sorted_plan = [t for t in scheduler.sort_by_time() if id(t) in planned_ids]
+            st.table([
+                {
+                    "Priority": t.priority,
+                    "Title": t.title,
+                    "Type": t.task_type,
+                    "Duration (min)": t.duration,
+                    "Due": t.due_time or "—",
+                    "Recurring": "Yes" if t.recurring else "No",
+                }
+                for t in sorted_plan
+            ])
+        else:
+            st.warning("No pending tasks fit within your available time.")

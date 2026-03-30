@@ -1,11 +1,19 @@
 classDiagram
+    class TaskStatus {
+        <<enumeration>>
+        PENDING
+        COMPLETE
+        SKIPPED
+    }
+
     class Owner {
         +String name
         +int available_time
         +dict preferences
+        +list pets
         +add_pet()
         +update_preferences()
-        +view_tasks()
+        +view_tasks(pet_name: String = None, status: TaskStatus = None)
     }
 
     class Pet {
@@ -16,7 +24,7 @@ classDiagram
         +list tasks
         +add_task()
         +remove_task()
-        +get_tasks()
+        +get_tasks(status: TaskStatus = None)
     }
 
     class Task {
@@ -24,24 +32,28 @@ classDiagram
         +String task_type
         +int duration
         +int priority
-        +String due_time
         +bool recurring
-        +String status
+        +TaskStatus status
+        +String? due_time
+        +String? due_date
+        +String? frequency
         +mark_complete()
-        +update_task()
-        +is_conflicting()
+        +update_task(**kwargs)
+        +is_conflicting(other Task) bool
     }
 
     class Scheduler {
-        +list tasks
-        +int available_time
+        +Owner owner
         +list planned_tasks
         +sort_tasks()
+        +sort_by_time()
         +detect_conflicts()
+        +warn_conflicts()
         +generate_daily_plan()
+        +mark_task_complete(task Task, pet Pet)
         +explain_plan()
     }
 
     Owner "1" --> "0..*" Pet : owns
     Pet "1" --> "0..*" Task : has
-    Scheduler "1" ..> "0..*" Task : schedules
+    Scheduler "1" --> "1" Owner : uses
